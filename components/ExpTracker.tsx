@@ -36,6 +36,13 @@ export default function ExpTracker() {
 	const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 	// 캡처 스트림은 별도 훅에서 관리합니다.
 
+
+	// ExpTracker.tsx 상단 state 선언부
+	const [notionApiKey, setNotionApiKey] = usePersistentState<string>("notionApiKey", "");
+	const [notionDaysDbId, setNotionDaysDbId] = usePersistentState<string>("notionDaysDbId", "");
+	const [notionSessionsDbId, setNotionSessionsDbId] = usePersistentState<string>("notionSessionsDbId", "");
+
+
 	const [intervalSec, setIntervalSec] = usePersistentState<IntervalSec>("intervalSec", 1 as IntervalSec);
 	const [roiLevel, setRoiLevel] = usePersistentState<RoiRect | null>("roiLevel", null);
 	const [roiExp, setRoiExp] = usePersistentState<RoiRect | null>("roiExp", null);
@@ -83,7 +90,7 @@ export default function ExpTracker() {
 	});
 	const hasStream = !!stream;
 	// PiP 이벤트 핸들러에서 오래된 클로저(stale closure)를 피하기 위한 ref들
-	const { open: pipOpen, update: pipUpdate, close: pipClose, isOpen: pipIsOpen } = useDocumentPip({
+	const { open: pipOpen, update: pipUpdate, close: pipClose, isOpen: pipIsOpen,showToast } = useDocumentPip({
 		onToggle: () => {
 			if (isSamplingRef.current) {
 				pauseSamplingRef.current();
@@ -97,6 +104,58 @@ export default function ExpTracker() {
 			// 메인 UI와 동일: 타이머를 한 번도 시작하지 않았으면 초기화 불가
 			if (!hasStartedRef.current) return;
 			resetSamplingRef.current();
+		},
+
+		/* ExpTracker.tsx 내부 onApiTest 부분 수정 */
+		onApiTest: async () => { // 1. async 추가
+		    // 2. 현재 상태 값들을 안전하게 가져옵니다.
+		    // cumExpValue와 cumExpPct는 상위 스코프의 state를 참조합니다.
+		    if (!notionApiKey || !notionDaysDbId || !notionSessionsDbId) {
+		        showToast("⚠️ 설정에서 노션 정보를 먼저 입력해주세요.");
+		        return;
+		    }
+
+		    const now = Date.now();
+		    const startTimeTs = now - elapsedMs; 
+		    const startTime = new Date(startTimeTs).toLocaleString('ko-KR');
+		    const endTime = new Date(now).toLocaleString('ko-KR');
+		    
+		    // 획득 경험치 및 퍼센트 (숫자만 추출)
+		    const gainedExp = ocr.cumExpValue; 
+		    const gainedPct = ocr.cumExpPct.toFixed(4); // 소수점 4자리까지 전송
+
+		    console.log("API 전송 시도:", { startTime, endTime, gainedExp, gainedPct });
+
+			try {
+		        // 전송할 데이터 객체
+		        const postData = {
+		            stime: startTime,
+		            etime: endTime,
+		            exp_val: ocr.cumExpValue.toString(),
+		            exp_pct: ocr.cumExpPct.toFixed(4),
+		            api_key: notionApiKey,
+		            days_db: notionDaysDbId,
+		            sessions_db: notionSessionsDbId
+		        };
+
+		        const url = `https://zzss1004.dothome.co.kr/api/notion.php`;
+		        
+		        const response = await fetch(url, {
+		            method: 'POST',
+		            headers: {
+		                'Content-Type': 'application/x-www-form-urlencoded',
+		            },
+		            // URLSearchParams를 사용하면 자동으로 URL 인코딩된 문자열로 변환됩니다.
+		            body: new URLSearchParams(postData).toString()
+		        });
+		        
+		        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+		        
+		        showToast("노션 전송 완료! ✅");
+		    } catch (error) {
+		        console.error("API 전송 실패:", error);
+		        showToast("❌ 전송 실패");
+		    }
 		}
 	});
 	const [pipSupported, setPipSupported] = useState(false);
@@ -602,7 +661,43 @@ export default function ExpTracker() {
 			/>
 
 			<Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="설정" disableEscClose={activeRoi !== null || onboardingOpen}>
-				<div className="flex items-center gap-2">
+					<div className="flex items-center gap-4 bg-white/5 p-3 rounded-lg border border-white/10 mb-4">
+						<div className="flex flex-[1.5] items-center gap-2 min-w-0">
+						<label className="text-[10px] uppercase font-bold text-white/40 shrink-0">API Key</label>
+						<input 
+							className="w-full bg-white/10 text-white rounded px-2 py-1 text-xs border border-white/10 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 min-w-0" 
+							placeholder="secret_..." 
+							type="password" 
+							value={notionApiKey}
+							onChange={e => setNotionApiKey(e.target.value)}
+						/>
+						</div>
+
+						<div className="flex flex-1 items-center gap-2 min-w-0">
+						<label className="text-[10px] uppercase font-bold text-white/40 shrink-0">Days</label>
+						<input 
+							className="w-full bg-white/10 text-white rounded px-2 py-1 text-xs border border-white/10 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 min-w-0" 
+							placeholder="32자리 ID" 
+							type="text" 
+							value={notionDaysDbId}
+							onChange={e => setNotionDaysDbId(e.target.value)}
+						/>
+						</div>
+
+						<div className="flex flex-1 items-center gap-2 min-w-0">
+						<label className="text-[10px] uppercase font-bold text-white/40 shrink-0">Sessions</label>
+						<input 
+							className="w-full bg-white/10 text-white rounded px-2 py-1 text-xs border border-white/10 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 min-w-0" 
+							placeholder="32자리 ID" 
+							type="text" 
+							value={notionSessionsDbId}
+							onChange={e => setNotionSessionsDbId(e.target.value)}
+						/>
+						</div>
+					</div>
+
+
+    				<div className="flex items-center gap-2">
 					<button className="btn btn-primary" onClick={startCapture}>게임 창 선택</button>
 					{stream ? (
 						<button className="btn" onClick={stopCapture}>공유 중지</button>

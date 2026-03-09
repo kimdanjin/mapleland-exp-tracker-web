@@ -1,6 +1,7 @@
 export type PipCallbacks = {
   onToggle: () => void;
   onReset: () => void;
+  onApiTest: () => void; 
 };
 
 export type PipState = {

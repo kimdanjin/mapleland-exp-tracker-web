@@ -20,6 +20,20 @@ export class PipController {
     return !!(w && !w.closed);
   }
 
+  showToast(message: string = "전송 완료!", duration: number = 2000): void {
+    if (!this.pipWindow) return;
+    const toast = this.pipWindow.document.getElementById("pip-toast");
+    if (toast) {
+      toast.textContent = message;
+      toast.classList.add("show");
+      
+      // 일정 시간 후 다시 숨김
+      setTimeout(() => {
+        toast.classList.remove("show");
+      }, duration);
+    }
+  }
+
   async open(): Promise<void> {
     // @ts-ignore experimental
     const dpi: any = (window as any).documentPictureInPicture;
@@ -52,6 +66,15 @@ export class PipController {
         try { this.callbacks.onToggle(); } catch {}
       });
     }
+
+    // 추가: API 테스트 버튼 이벤트
+    const apiBtn = win.document.getElementById("pip-api-test");
+    if (apiBtn) {
+      apiBtn.addEventListener("click", () => {
+        try { this.callbacks.onApiTest(); } catch {}
+      });
+    }
+
     const reset = win.document.getElementById("pip-reset");
     if (reset) {
       reset.addEventListener("click", () => {
@@ -104,6 +127,21 @@ export class PipController {
         if (isForm) return;
         e.preventDefault();
         try { this.callbacks.onReset(); } catch {}
+      } else if (code === "KeyT" || (e as any).key === "t" || (e as any).key === "T") {
+        // 단축키 T: API 전송 (onApiTest)
+        const el = e.target as HTMLElement | null;
+        const tag = el?.tagName?.toLowerCase();
+        const isForm = !!el && (el.isContentEditable || tag === "input" || tag === "textarea" || tag === "select");
+        
+        // 폼 입력 중이 아닐 때만 동작
+        if (isForm) return;
+        
+        e.preventDefault();
+        try { 
+          this.callbacks.onApiTest(); 
+        } catch (err) {
+          console.error("PiP Hotkey T Error:", err);
+        }
       }
     };
     // Space의 기본 버튼 활성화를 확실히 선점하기 위해 캡처(capture)로 등록합니다.
